@@ -286,10 +286,10 @@ growproc(int n)
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
-    process_kvmmap(p->kernel_pagetable,sz,walkaddr(p->pagetable,sz),n/PGSIZE,(PTE_W|PTE_R|PTE_X|(~PTE_U)));
+    // process_kvmmap(p->kernel_pagetable,sz,walkaddr(p->pagetable,sz),n/PGSIZE,(PTE_W|PTE_R|PTE_X|(~PTE_U)));
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
-    uvmunmap(p->kernel_pagetable,sz,n/PGSIZE,0);
+    // uvmunmap(p->kernel_pagetable,sz,n/PGSIZE,0);
   }
   p->sz = sz;
   return 0;
@@ -315,11 +315,11 @@ fork(void)
     release(&np->lock);
     return -1;
   }
-  if(process_kvmcopy(p->kernel_pagetable, np->kernel_pagetable, p->sz) < 0) {
-    freeproc(np);
-    release(&np->lock);
-    return -1;
-  }
+  // if(process_kvmcopy(p->kernel_pagetable, np->kernel_pagetable, p->sz) < 0) {
+  //   freeproc(np);
+  //   release(&np->lock);
+  //   return -1;
+  // }
   np->sz = p->sz;
 
   np->parent = p;
@@ -523,7 +523,7 @@ scheduler(void)
         w_satp(MAKE_SATP(p->kernel_pagetable));
         sfence_vma();
         swtch(&c->context, &p->context);
-
+        kvminithart();
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
