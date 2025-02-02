@@ -1,0 +1,12 @@
+q1:regs a0-a8 contain arguments to functions.register a2 holds 13 in main's call to printf.
+
+q2:0x26
+
+q3:1584
+
+q4:0x38
+
+q5:He110 World. Change i to 726c6400. No need to change 57616.
+
+q6:it will print whatever in a2. Because printf figure out in a0 that it need two
+arguments in the string so by default it will read values in registers a1 and a2.
