@@ -116,9 +116,18 @@ found:
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
+  if(p->pagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
   // add per process kernel page table
   p->kernel_pagetable = process_kvminit();
-
+  if(p->kernel_pagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
   // Allocate a page for the process's kernel stack.
   // Map it high in memory, followed by an invalid
   // guard page.
@@ -128,12 +137,6 @@ found:
   uint64 va = KSTACK((int) (p - proc));
   process_kvmmap(p->kernel_pagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   p->kstack = va;
-
-  if(p->pagetable == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -156,10 +159,7 @@ freeproc(struct proc *p)
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   if (p->kstack) {
-    pte_t* pte = walk(p->kernel_pagetable, p->kstack, 0);
-    if (pte == 0)
-        panic("freeproc: walk");
-    kfree((void*)PTE2PA(*pte));
+    uvmunmap(p->kernel_pagetable,p->kstack,1,1);
   }
   p->kstack = 0;
   if(p->kernel_pagetable)
@@ -266,11 +266,10 @@ userinit(void)
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
-
+  u2kvmcopy(p->pagetable,p->kernel_pagetable,0,p->sz);
   p->state = RUNNABLE;
 
   release(&p->lock);
-  process_kvmmap(p->kernel_pagetable,0,walkaddr(p->pagetable,0),PGSIZE,PTE_W|PTE_R|PTE_X|(~PTE_U));
 }
 
 // Grow or shrink user memory by n bytes.
@@ -283,15 +282,17 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
+    if (PGROUNDUP(sz+n) >= PLIC) {
+      return -1;
+    }
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
-    // process_kvmmap(p->kernel_pagetable,sz,walkaddr(p->pagetable,sz),n/PGSIZE,(PTE_W|PTE_R|PTE_X|(~PTE_U)));
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
-    // uvmunmap(p->kernel_pagetable,sz,n/PGSIZE,0);
   }
   p->sz = sz;
+  u2kvmcopy(p->pagetable,p->kernel_pagetable,sz-n,sz);
   return 0;
 }
 
@@ -315,13 +316,8 @@ fork(void)
     release(&np->lock);
     return -1;
   }
-  // if(process_kvmcopy(p->kernel_pagetable, np->kernel_pagetable, p->sz) < 0) {
-  //   freeproc(np);
-  //   release(&np->lock);
-  //   return -1;
-  // }
   np->sz = p->sz;
-
+  u2kvmcopy(np->pagetable,np->kernel_pagetable,0,np->sz);
   np->parent = p;
 
   // copy saved user registers.

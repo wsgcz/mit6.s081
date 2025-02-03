@@ -19,7 +19,6 @@ exec(char *path, char **argv)
   struct inode *ip;
   struct proghdr ph;
   pagetable_t pagetable = 0, oldpagetable;
-  // pagetable_t kernel_pagetable = 0, old_kernel_pagetable;
   struct proc *p = myproc();
 
   begin_op();
@@ -38,8 +37,6 @@ exec(char *path, char **argv)
 
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
-  // if((kernel_pagetable = kalloc()) == 0)
-  //   goto bad;
   // Load program into memory.
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
     if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph))
@@ -109,17 +106,14 @@ exec(char *path, char **argv)
     if(*s == '/')
       last = s+1;
   safestrcpy(p->name, last, sizeof(p->name));
-    
   // Commit to the user image.
   oldpagetable = p->pagetable;
-  // old_kernel_pagetable = p->kernel_pagetable;
   p->pagetable = pagetable;
-  // p->kernel_pagetable = kernel_pagetable;
   p->sz = sz;
+  u2kvmcopy(p->pagetable,p->kernel_pagetable,0,p->sz);
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
-  // freewalk(old_kernel_pagetable);
 
   if (p->pid == 1) {
     vmprint(p->pagetable,2);
