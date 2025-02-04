@@ -68,9 +68,33 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    p->killed = 1;
+    if (r_scause() == 15 || r_scause() == 13) {
+      uint64 va = r_stval();
+      uint64 guard_up = PGROUNDDOWN(p->trapframe->sp);
+      uint64 guard_down = guard_up - PGSIZE;
+      if ((va > p->sz) || ((va < guard_up) && (va >= guard_down))) {
+        p->killed = 1;
+      }
+      else {
+        pagetable_t pagetable = p->pagetable;
+        va = PGROUNDDOWN(va);
+        char* mem = kalloc();
+        if(mem == 0){
+          p->killed = 1;
+        }
+        else {
+          memset(mem, 0, PGSIZE);
+          if(mappages(pagetable, va, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+            uvmunmap(pagetable, va, 1,1);
+            panic("can not map page for lazy allocation");
+          }
+        }
+      }
+    } else {
+      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+      p->killed = 1;
+    }
   }
 
   if(p->killed)
@@ -144,9 +168,26 @@ kerneltrap()
     panic("kerneltrap: interrupts enabled");
 
   if((which_dev = devintr()) == 0){
-    printf("scause %p\n", scause);
-    printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
-    panic("kerneltrap");
+    // if (scause == 15 || scause == 13) {
+    //   struct proc* p = myproc();
+    //   uint64 va = r_stval();
+    //   pagetable_t pagetable = p->pagetable;
+    //   va = PGROUNDDOWN(va);
+    //   char* mem = kalloc();
+    //   if(mem == 0){
+    //     p->killed = 1;
+    //   }
+    //   memset(mem, 0, PGSIZE);
+    //   if(mappages(pagetable, va, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+    //     uvmunmap(pagetable, va, 1,1);
+    //     panic("can not map page for lazy allocation");
+    //   }
+    // }
+    //else {
+      printf("scause %p\n", scause);
+      printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
+      panic("kerneltrap");
+    //}
   }
 
   // give up the CPU if this is a timer interrupt.
