@@ -23,11 +23,41 @@ struct {
   struct run *freelist;
 } kmem;
 
+struct {
+  struct spinlock lock;
+  int reference_count[FREEPAGES];
+} kref;
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&kref.lock, "kref");
+  for (int i = 0; i < FREEPAGES; i += 1) {
+    kref.reference_count[i] = 1;
+  }
   freerange(end, (void*)PHYSTOP);
+}
+
+void kref_inc(uint64 pa) {
+  acquire(&kref.lock);
+  kref.reference_count[PA2REF(pa)] += 1;
+  release(&kref.lock);
+}
+
+void kref_setone(uint64 pa) {
+  acquire(&kref.lock);
+  kref.reference_count[PA2REF(pa)] = 1;
+  release(&kref.lock);
+}
+
+int kref_dec(uint64 pa) {
+  int ref = 0;
+  acquire(&kref.lock);
+  kref.reference_count[PA2REF(pa)] -= 1;
+  ref = kref.reference_count[PA2REF(pa)];
+  release(&kref.lock);
+  return ref;
 }
 
 void
@@ -50,6 +80,10 @@ kfree(void *pa)
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
+  
+  int ref = kref_dec((uint64)pa);
+  if (ref > 0) 
+    return;
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
@@ -76,7 +110,9 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if(r)
+  if(r) {
     memset((char*)r, 5, PGSIZE); // fill with junk
+    kref_setone((uint64)r);
+  }
   return (void*)r;
 }

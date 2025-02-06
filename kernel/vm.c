@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -311,7 +313,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -320,13 +321,12 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    flags = (flags & (~PTE_W)) | PTE_C;
+    *pte = PA2PTE(pa) | flags;
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
       goto err;
     }
+    kref_inc(pa);
   }
   return 0;
 
@@ -355,9 +355,18 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
-
+  pte_t* pte;
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    pte = walk(pagetable, va0, 0);
+    if (pte == 0) {
+      return -1;
+    }
+    if ((*pte & PTE_W) == 0) {
+      if (cow_handler(pagetable,va0) == -1) {
+        return -1;
+      }
+    }
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
@@ -439,4 +448,27 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+int cow_handler(pagetable_t pagetable, uint64 va) {
+  struct proc* p = myproc();
+  pte_t* pte;
+  if (va > p->sz) return -1;
+  uint64 guard_top = PGROUNDDOWN(p->trapframe->sp);
+  uint64 guard_down = guard_top - PGSIZE;
+  if ((guard_down <= va) && (va < guard_top)) return -1;
+  if ((pte = walk(pagetable,va,0)) == 0) return -1;
+  if (*pte == 0) return -1;
+  uint flags = PTE_FLAGS(*pte);
+  if ((flags & PTE_V) == 0) return -1;
+  if ((flags & PTE_C) == 0) return -1;
+  if ((flags & PTE_U) == 0) return -1;
+  char* mem;
+  if ((mem = kalloc()) == 0) return -1;
+  uint64 pa = PTE2PA(*pte);
+  memmove(mem, (char*)pa, PGSIZE);
+  flags = (flags & (~PTE_C)) | PTE_W;
+  *pte = PA2PTE((uint64)mem) | flags;
+  kfree((void *) pa);
+  return 0;
 }
