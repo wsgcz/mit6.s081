@@ -173,6 +173,7 @@ int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 pte_t *         walk(pagetable_t pagetable, uint64 va, int alloc);
+int             cow(pagetable_t pagetable, uint64 va);
 
 // plic.c
 void            plicinit(void);
@@ -187,3 +188,9 @@ void            virtio_disk_intr(void);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+
+//kalloc.c
+void kref_dec(uint64 pa);
+void kref_inc(uint64 pa);
+void kref_setone(uint64 pa);
+int kref_get(uint64 pa);

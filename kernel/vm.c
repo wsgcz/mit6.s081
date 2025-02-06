@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -320,13 +322,10 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
-    reference_count[PA_REF(pa)] += 1;
+    kref_inc(pa);
+    *pte &= ~PTE_W;   // both child and parent can not write into this page
+    *pte |= PTE_C;  // flag the page as copy on write
     flags = PTE_FLAGS(*pte);
-    if ((flags & PTE_W) != 0) {
-      flags = (flags & (~PTE_W)) | PTE_C;
-      *pte = pa | flags;
-      //error 1
-    }
     if(mappages(new, i, PGSIZE, pa, flags) != 0){
       goto err;
     }
@@ -361,25 +360,18 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   pte_t* pte;
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    pa0 = walkaddr(pagetable, va0);
+    if(pa0 == 0)
+      return -1;
     pte = walk(pagetable,va0,0);
-    if ((*pte & PTE_C)!=0) {
-      uint64 pa = PTE2PA(*pte);
-      if (reference_count[PA_REF(pa)] == 1) {
-          *pte |= PTE_W;
-          *pte &= ~PTE_C;
-          //error two
-        }
-      char* mem = kalloc();
-      if (mem == 0) {
-        return -1;
-      }
-      memset(mem, 0, PGSIZE);
-      if(mappages(pagetable, va0, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
-        kfree(mem);
-        return -1;
-      }
-      kfree((void*)pa);
+    if (pte == 0) {
+      return -1;
     }
+    if ((*pte & PTE_W)==0) {
+      if (cow(pagetable,va0) == -1)
+        return -1;
+    }
+
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
@@ -461,4 +453,43 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+int cow(pagetable_t pagetable, uint64 va) {
+  pte_t* pte = walk(pagetable,va,0);
+  if (pte == 0) {
+    return -1;
+  }
+  if ((*pte & PTE_V) == 0) {
+    return -1;
+  }
+  if ((*pte & PTE_C) == 0) {
+    return -1;
+  }
+  if ((*pte & PTE_U) == 0) {
+    return -1;
+  }
+  struct proc* p = myproc();
+  uint64 guard_top = PGROUNDDOWN(p->trapframe->sp);
+  uint64 guard_down = guard_top - PGSIZE;
+  if ((va > p->sz) || ((va >= guard_down) && (va < guard_top))) {
+    return -1; 
+  }
+  uint64 pa = PTE2PA(*pte);
+  uint flags = PTE_FLAGS(*pte);
+  // int ref = kref_get(pa);
+  // if (ref == 1) {
+  //   *pte = *pte | ((flags | PTE_W) & (~PTE_C));
+  // } 
+  // else {
+    char* mem = kalloc();
+    if (mem == 0) {
+      return -1;
+    }
+    memmove(mem, (char*)pa, PGSIZE);
+    flags = (flags | PTE_W) & (~PTE_C);
+    *pte = PA2PTE(mem) | flags; //bug found
+    kfree((void*)pa);
+  // }
+  return 0;
 }
