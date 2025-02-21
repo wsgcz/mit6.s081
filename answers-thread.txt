@@ -1,0 +1,3 @@
+when two threads put to the same entry in the hashtable
+they interleve excuting the instruction (*p = e) in function insert
+but only one thread can insert it
