@@ -219,7 +219,7 @@ sys_unlink(void)
   if(writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
     panic("unlink: writei");
   if(ip->type == T_DIR){
-    dp->nlink--;
+    dp->nlink--;  //WHY
     iupdate(dp);
   }
   iunlockput(dp);
@@ -415,6 +415,7 @@ sys_chdir(void)
 uint64
 sys_exec(void)
 {
+  // WHY
   char path[MAXPATH], *argv[MAXARG];
   int i;
   uint64 uargv, uarg;
