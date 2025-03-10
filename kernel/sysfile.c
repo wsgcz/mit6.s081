@@ -484,3 +484,65 @@ sys_pipe(void)
   }
   return 0;
 }
+
+uint64
+sys_mmap(void){
+  uint64 sz;
+  struct proc *p = myproc();
+  struct file *f;
+  void *addr;
+  int length;
+  int prot;
+  int flags;
+  int offset;
+
+  // get the argument
+  if((argaddr(0, (uint64*)&addr) < 0) || (argint(1, &length) < 0) || (argint(2, &prot) < 0) || (argint(3, &flags) < 0) || (argfd(4, 0, &f) < 0) || (argint(5, &offset))){
+    return 0xffffffffffffffff;
+  }
+
+  // check argument
+  if (addr != 0) {
+    panic("addr arg for mmap is wrong");
+  }
+  if (offset != 0) {
+    panic("addr offset for mmap is wrong");
+  }
+  if (length < 0){
+    panic("addr length for mmap is wrong");
+  }
+
+  // increment the reference count of file
+  filedup(f);
+
+  struct vma* vma;
+  int i;
+  for(i = 0; i <NOVMA; i += 1) {
+    if (p->vmas[i].valid == 0) {
+      vma = &p->vmas[i];
+      vma->valid = 1;
+      break;
+    }
+  }
+  if (i == NOVMA) {
+    panic("no more vma in this proc");
+  }
+  vma->f = f;
+  vma->flags = flags;
+  vma->prot = prot;
+  vma->length = length;
+  vma->offset = offset;
+
+  sz = p->sz;
+  p->sz = sz + length;
+  vma->addr = (void *)sz;
+  // if (uvmadd(p->pagetable,sz, p->sz) == 0) {
+  //   panic("can not add more ptes");
+  // }
+  return sz;
+}
+
+uint64
+sys_munmap(void){
+  return -1;
+}

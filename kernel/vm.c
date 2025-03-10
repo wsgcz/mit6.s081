@@ -172,7 +172,8 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
     if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+      //panic("uvmunmap: not mapped");
+      continue;
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     if(do_free){
@@ -239,6 +240,27 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
   }
   return newsz;
 }
+
+// // Allocate PTEs and physical memory to grow process from oldsz to
+// // newsz, which need not be page aligned.  Returns new size or 0 on error.
+// uint64
+// uvmadd(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
+// {
+//   pte_t * pte;
+//   uint64 a;
+
+//   if(newsz < oldsz)
+//     return oldsz;
+
+//   oldsz = PGROUNDUP(oldsz);
+//   for(a = oldsz; a < newsz; a += PGSIZE){
+//     if((pte = walk(pagetable,a,1)) == 0){
+//       return 0;
+//     }
+//     *pte = PTE_V|PTE_U;
+//   }
+//   return newsz;
+// }
 
 // Deallocate user pages to bring the process size from oldsz to
 // newsz.  oldsz and newsz need not be page-aligned, nor does newsz

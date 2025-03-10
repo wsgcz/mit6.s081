@@ -39,6 +39,7 @@ _v1(char *p)
   int i;
   for (i = 0; i < PGSIZE*2; i++) {
     if (i < PGSIZE + (PGSIZE/2)) {
+      //printf("in loop iteration %d\n", i);
       if (p[i] != 'A') {
         printf("mismatch at %d, wanted 'A', got 0x%x\n", i, p[i]);
         err("v1 mismatch (1)");
@@ -109,7 +110,7 @@ mmap_test(void)
   // due to PROT_READ). the fifth argument is the file descriptor
   // of the file to be mapped. the last argument is the starting
   // offset in the file.
-  //
+
   char *p = mmap(0, PGSIZE*2, PROT_READ, MAP_PRIVATE, fd, 0);
   if (p == MAP_FAILED)
     err("mmap (1)");
