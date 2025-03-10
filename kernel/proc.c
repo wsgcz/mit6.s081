@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
 
 struct cpu cpus[NCPU];
 
@@ -282,6 +283,14 @@ fork(void)
   }
   np->sz = p->sz;
 
+  for (int i = 0 ; i < NOVMA; i += 1) {
+    struct vma* vma = &p->vmas[i];
+    if (vma->valid) {
+      filedup(vma->f);
+      memmove(&np->vmas[i], vma, sizeof(struct vma));
+    }
+  }
+
   np->parent = p;
 
   // copy saved user registers.
@@ -353,6 +362,22 @@ exit(int status)
     }
   }
 
+  for(int i = 0; i < NOVMA; i += 1) {
+    struct vma* vma;
+    vma = &p->vmas[i];
+    if (vma->valid) {
+      int npages = vma->length / PGSIZE + (((vma->length % PGSIZE) != 0) ? 1 : 0);
+      if (vma->flags & MAP_SHARED){
+        uvmunmap_dirty(p->pagetable, (uint64)vma->addr, npages, vma);
+      }
+      else {
+        uvmunmap(p->pagetable,(uint64)vma->addr, npages, 1);
+      }
+      fileclose(vma->f);
+      vma->valid = 0;
+    }
+  }
+
   begin_op();
   iput(p->cwd);
   end_op();
@@ -393,7 +418,6 @@ exit(int status)
   p->state = ZOMBIE;
 
   release(&original_parent->lock);
-
   // Jump into the scheduler, never to return.
   sched();
   panic("zombie exit");

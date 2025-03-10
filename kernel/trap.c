@@ -41,63 +41,63 @@ trapinithart(void)
 }
 
 int handler(uint64 va){
-      struct proc *p = myproc();
-      uint64 guard_up = PGROUNDDOWN(p->trapframe->sp);
-      uint64 guard_down = guard_up - PGSIZE;
-      //printf("va is %p\n",va);
-      if ((va >= p->sz) || (va < 0) || ((va < guard_up) && (va >= guard_down))) {
-        printf("va has some error\n");
-        return -1;
-      } 
-      struct vma* vma;
-      int i;
-      for(i = 0; i < NOVMA; i += 1) {
-        vma = &p->vmas[i];
-        if(vma->valid) {
-          //printf("found vma record\n");
-          //printf("va in vma is %p\n", vma->addr);
-          if((va < ((uint64)vma->addr + vma->length)) && (va >= (uint64)vma->addr)){
-            //printf("found va in map file\n");
-            break;
-          }
-        }
+  struct proc *p = myproc();
+  uint64 guard_up = PGROUNDDOWN(p->trapframe->sp);
+  uint64 guard_down = guard_up - PGSIZE;
+  //printf("va is %p\n",va);
+  if ((va >= p->sz) || (va < 0) || ((va < guard_up) && (va >= guard_down))) {
+    printf("va has some error\n");
+    return -1;
+  } 
+  struct vma* vma;
+  int i;
+  for(i = 0; i < NOVMA; i += 1) {
+    vma = &p->vmas[i];
+    if(vma->valid) {
+      //printf("found vma record\n");
+      //printf("va in vma is %p\n", vma->addr);
+      if((va < ((uint64)vma->addr + vma->length)) && (va >= (uint64)vma->addr)){
+        //printf("found va in map file\n");
+        break;
       }
-      if (i == NOVMA){
-        printf("do not have file map for this va\n");
-        return -1;
-      }
-      struct file* f = vma->f;
-      if(f == 0) {
-        panic("invalid file in vma\n");
-      }
-      uint64 pa = 0;
-      if ((pa = (uint64)kalloc()) == 0) {
-        printf("kalloc for vma is wrong\n");
-        return -1;
-      }
-      memset((void*)pa, 0, PGSIZE);
-      int perm = 0;
-      if (vma->prot | PROT_READ) {
-        perm = perm | PTE_R;
-      }
-      if (vma->prot | PROT_WRITE) {
-        perm = perm | PTE_W;
-      }
-      if(vma->prot | PROT_EXEC) {
-        perm = perm | PTE_X;
-      }
-      printf("perm is %d\n", perm);
-      if (mappages(p->pagetable,va,PGSIZE,pa,(perm | PTE_U)) == -1){
-        printf("error when map page\n");
-        return -1;
-      }
-      begin_op();
-      ilock(f->ip);
-      uint offset = (va - (uint64)vma->addr) + vma->offset;
-      readi(f->ip, 1, va, offset, PGSIZE);
-      iunlock(f->ip);
-      end_op();
-      return 0;
+    }
+  }
+  if (i == NOVMA){
+    printf("do not have file map for this va\n");
+    return -1;
+  }
+  struct file* f = vma->f;
+  if(f == 0) {
+    panic("invalid file in vma\n");
+  }
+  uint64 pa = 0;
+  if ((pa = (uint64)kalloc()) == 0) {
+    printf("kalloc for vma is wrong\n");
+    return -1;
+  }
+  memset((void*)pa, 0, PGSIZE);
+  int perm = 0;
+  if (vma->prot | PROT_READ) {
+    perm = perm | PTE_R;
+  }
+  if (vma->prot | PROT_WRITE) {
+    perm = perm | PTE_W;
+  }
+  if(vma->prot | PROT_EXEC) {
+    perm = perm | PTE_X;
+  }
+  //printf("perm is %d\n", perm);
+  if (mappages(p->pagetable,va,PGSIZE,pa,(perm | PTE_U)) == -1){
+    printf("error when map page\n");
+    return -1;
+  }
+  begin_op();
+  ilock(f->ip);
+  uint offset = (va - (uint64)vma->addr) + vma->offset;
+  readi(f->ip, 1, va, offset, PGSIZE);
+  iunlock(f->ip);
+  end_op();
+  return 0;
 }
 
 //

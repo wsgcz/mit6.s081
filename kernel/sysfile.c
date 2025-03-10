@@ -511,6 +511,9 @@ sys_mmap(void){
   if (length < 0){
     panic("addr length for mmap is wrong");
   }
+  if((f->writable == 0) && (prot & PROT_WRITE) && ((flags & MAP_PRIVATE) == 0)) {
+    return 0xffffffffffffffff;
+  } 
 
   // increment the reference count of file
   filedup(f);
@@ -533,7 +536,7 @@ sys_mmap(void){
   vma->length = length;
   vma->offset = offset;
 
-  sz = p->sz;
+  sz = PGROUNDUP(p->sz);
   p->sz = sz + length;
   vma->addr = (void *)sz;
   // if (uvmadd(p->pagetable,sz, p->sz) == 0) {
@@ -544,5 +547,55 @@ sys_mmap(void){
 
 uint64
 sys_munmap(void){
-  return -1;
+  uint64 addr;
+  int length;
+  if((argaddr(0, &addr) < 0) || (argint(1, &length) < 0)){
+    return -1;
+  }
+  struct vma* vma;
+  int i;
+  struct proc *p = myproc();
+  for(i = 0; i < NOVMA; i += 1) {
+    vma = &p->vmas[i];
+    if(vma->valid) {
+      //printf("found vma record\n");
+      //printf("va in vma is %p\n", vma->addr);
+      if((addr < ((uint64)vma->addr + vma->length)) && (addr >= (uint64)vma->addr)){
+        //printf("found va in map file\n");
+        break;
+      }
+    }
+  }
+  if (i == NOVMA){
+    printf("do not have file map for this va in munmap\n");
+    return -1;
+  }
+  struct file* f = vma->f;
+  if(f == 0) {
+    panic("invalid file in vma in munmap\n");
+  }
+  if (length > vma->length) {
+    printf("unmap more than alloc\n");
+    return -1;
+  }
+  int npages = length / PGSIZE + (((length % PGSIZE) != 0) ? 1 : 0);
+  if (vma->flags & MAP_SHARED){
+    // printf("n page is %d\n",npages);
+    //printf("addr is %p \n", addr);
+    uvmunmap_dirty(p->pagetable, addr, npages, vma);
+  }
+  else {
+    uvmunmap(p->pagetable,addr, npages, 1);
+  }
+  if (length == vma->length) {
+    fileclose(f);
+    vma->valid = 0;
+  } else{
+    vma->length = vma->length - length;
+    if (addr == (uint64)vma->addr) {
+      vma->addr = (void *)(addr + length);
+      vma->offset = vma->offset + length;
+    }
+  }
+  return 0;
 }
