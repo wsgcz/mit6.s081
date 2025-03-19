@@ -133,8 +133,7 @@ e1000_transmit(struct mbuf *m)
   */
   desc->addr = (uint64)m->head;
   desc->length = m->len;
-  desc->cmd = E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS; //todo
-  // m->head = m->buf - sizeof(struct mbuf  *) - sizeof(char *) - sizeof(unsigned int);
+  desc->cmd = E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS; 
   tx_mbufs[index] = m;
   /*Finally, update the ring position by 
   * adding one to E1000_TDT modulo TX_RING_SIZE. 
@@ -169,15 +168,12 @@ e1000_recv(void)
   * adding one modulo RX_RING_SIZE.  
   */
     index = regs[E1000_RDT];
-    // uint32 head = regs[E1000_RDH];
-    // if (index > )
     index = (index + 1) % RX_RING_SIZE;
     /*Then check if a new packet is available by checking 
     * for the E1000_RXD_STAT_DD bit in the status portion of 
     * the descriptor. If not, stop. 
     **/
     struct rx_desc* desc = &rx_ring[index];
-    //todo check
     if((desc->status & E1000_RXD_STAT_DD) == 0) {
       return;
     }
@@ -197,12 +193,12 @@ e1000_recv(void)
     rx_mbufs[index] = newbuf;
     desc->addr = (uint64)newbuf->head;
     desc->status = 0;
-    regs[E1000_RDT] = index;
-  }
-  /*
+    /*
     Finally, update the E1000_RDT register to be 
     the index of the last ring descriptor processed. 
   */
+    regs[E1000_RDT] = index;
+  }
   
 }
 
